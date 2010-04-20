@@ -1,4 +1,9 @@
-#!/usr/bin/python
+#!/usr/bin/env python
+"""MyBackupr
+
+This source file is subject to the new BSD license that is bundled
+with this package in the file LICENSE.
+"""
 
 from urllib2 import Request, urlopen, URLError, HTTPError
 from threading import Thread

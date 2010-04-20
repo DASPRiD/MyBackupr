@@ -1,23 +1,25 @@
-#!/usr/bin/python
+#!/usr/bin/env python
+"""MyBackupr
+
+This source file is subject to the new BSD license that is bundled
+with this package in the file LICENSE.
+"""
 
 import flickrapi
+import apiData
 import os
-import downloader
+from mybackupr.downloader import Downloader
 
-API_KEY    = 'c03b993d9d80bbfec493172940e944a2'
-API_SECRET = 'f557b4bdc67b58cc'
-
-class MyBackupr:
-    def main(self):
-        self.flickr = flickrapi.FlickrAPI(API_KEY, API_SECRET)
+class Sync:
+    def __init__(self):
+        self.flickr = flickrapi.FlickrAPI(apiData.API_KEY, apiData.API_SECRET)
 
         self.homeDir   = os.path.expanduser('~')
         self.backupDir = self.homeDir + '/mybackupr'
 
         self.authenticate()
-        self.backup()
 
-    def backup(self):
+    def run(self):
         if not os.path.exists(self.backupDir):
             os.mkdir(self.backupDir, 0755)
 
@@ -49,7 +51,7 @@ class MyBackupr:
     def downloadPhoto(self, url, id):
         print 'Downloading photo with ID: ' + id
 
-        loader = downloader.Downloader(url, self.backupDir + '/' + id)
+        loader = Downloader(url, self.backupDir + '/' + id)
         loader.start()
 
     def fetchCollections(self, collections, path):
@@ -76,7 +78,7 @@ class MyBackupr:
             print '/'.join(path)
 
             path.pop()
-    
+
     def authenticate(self):
         (token, frob) = self.flickr.get_token_part_one(perms='read')
 
@@ -84,7 +86,3 @@ class MyBackupr:
             raw_input('Press ENTER after you authorized this program')
 
         self.flickr.get_token_part_two((token, frob))
-
-if __name__ == '__main__':
-    app = MyBackupr()
-    app.main()
