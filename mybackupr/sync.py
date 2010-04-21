@@ -4,11 +4,14 @@
 This source file is subject to the new BSD license that is bundled
 with this package in the file LICENSE.
 """
+import thread
 
+import os
 import flickrapi
 import apiData
-import os
-from mybackupr.downloader import Downloader
+import Queue
+from progressbar import ProgressBar, Percentage, Bar, ETA
+from mybackupr.download import Download
 
 class Sync:
     def __init__(self):
@@ -37,7 +40,21 @@ class Sync:
                                            per_page = 500,
                                            extras   = 'description,tags,url_o')
 
-        photos = result.find('photos').findall('photo')
+        root   = result.find('photos')
+        photos = root.findall('photo')
+
+        if page == 1:
+            print 'Syncing ' + root.attrib['total'] + ' photos...'
+
+            self.queue       = Queue.Queue()
+            self.progressBar = ProgressBar(int(root.attrib['total']), [Percentage(), ' ', Bar(), ' ', ETA()]).start()
+            self.threads = []
+
+            for i in range(5):
+                thread = Download(self.queue, self.progressBar)
+                thread.daemon = True
+                thread.start()
+                self.threads.append(thread)
 
         for photo in photos:
             id          = photo.attrib['id']
@@ -46,13 +63,24 @@ class Sync:
             url         = photo.attrib['url_o']
             tags        = photo.attrib['tags']
 
-            self.downloadPhoto(url, id);
+            if not os.path.exists(self.backupDir + '/' + id):
+                self.queue.put((url, self.backupDir + '/' + id))
+            else:
+                self.progressBar.update(self.progressBar.currval + 1)
 
-    def downloadPhoto(self, url, id):
-        print 'Downloading photo with ID: ' + id
+        if root.attrib['pages'] < page:
+            self.fetchPhotos(page + 1)
+        else:
+            self.queue.join()
+            self.progressBar.finish()
 
-        loader = Downloader(url, self.backupDir + '/' + id)
-        loader.start()
+            for thread in self.threads:
+                thread.kill()
+
+            self.queue   = None
+            self.threads = None
+
+            print 'Sync complete'
 
     def fetchCollections(self, collections, path):
         for collection in collections:
