@@ -7,6 +7,7 @@ with this package in the file LICENSE.
 import thread
 
 import os
+import shutil
 import flickrapi
 import apiData
 import Queue
@@ -17,22 +18,44 @@ class Sync:
     def __init__(self):
         self.flickr = flickrapi.FlickrAPI(apiData.API_KEY, apiData.API_SECRET)
 
-        self.homeDir   = os.path.expanduser('~')
-        self.backupDir = self.homeDir + '/mybackupr'
+        self.homeDir  = os.path.expanduser('~') + '/mybackupr'
+        self.photoDir = self.homeDir + '/photos'
+        self.folderDir = self.homeDir + '/folders'
 
         self.authenticate()
 
     def run(self):
-        if not os.path.exists(self.backupDir):
-            os.mkdir(self.backupDir, 0755)
+        if not os.path.exists(self.homeDir):
+            os.mkdir(self.homeDir, 0755)
+
+        if not os.path.exists(self.photoDir):
+            os.mkdir(self.photoDir, 0755)
+
+        if os.path.exists(self.folderDir):
+            shutil.rmtree(self.folderDir)
+
+        os.mkdir(self.folderDir, 0755)
 
         self.fetchPhotos()
 
-        #result      = self.flickr.collections_getTree()
-        #collections = result.find('collections').findall('collection')
-        #path        = ['~', 'mybackupr']
+        print 'Syncing collections and sets...'
 
-        #self.fetchCollections(collections, path)
+        result      = self.flickr.collections_getTree()
+        collections = result.find('collections').findall('collection')
+        path        = [self.homeDir, 'folders']
+        self.sets   = []
+
+        self.fetchCollections(collections, path)
+
+        result  = self.flickr.photosets_getList()
+        allSets = result.find('photosets').findall('photoset')
+        sets    = []
+
+        for set in allSets:
+            if not set.attrib['id'] in self.sets:
+                sets.append(set)
+            
+        self.fetchSets(sets, path)
 
     def fetchPhotos(self, page=1):
         result = self.flickr.photos_search(user_id  = 'me',
@@ -63,8 +86,10 @@ class Sync:
             url         = photo.attrib['url_o']
             tags        = photo.attrib['tags']
 
-            if not os.path.exists(self.backupDir + '/' + id):
-                self.queue.put((url, self.backupDir + '/' + id))
+            path = self.photoDir + '/' + id + '.jpg'
+
+            if not os.path.exists(path):
+                self.queue.put((url, path))
             else:
                 self.progressBar.update(self.progressBar.currval + 1)
 
@@ -84,9 +109,10 @@ class Sync:
 
     def fetchCollections(self, collections, path):
         for collection in collections:
-            title = collection.attrib['title']
+            path.append(collection.attrib['title'])
 
-            path.append(collection.attrib['id'])
+            if not os.path.exists('/'.join(path)):
+                os.mkdir('/'.join(path), 0755)
 
             sets           = collection.findall('set')
             subCollections = collection.findall('collection')
@@ -101,11 +127,17 @@ class Sync:
 
     def fetchSets(self, sets, path):
         for set in sets:
-            path.append(set.attrib['id'])
+            path.append(set.attrib['title'])
 
-            print '/'.join(path)
+            if not os.path.exists('/'.join(path)):
+                os.mkdir('/'.join(path), 0755)
+
+            for photo in self.flickr.walk_set(set.attrib['id']):
+                os.symlink(self.photoDir + '/' + photo.attrib['id'] + '.jpg', '/'.join(path) + '/' + photo.attrib['id'] + '.jpg')
 
             path.pop()
+
+            self.sets.append(set.attrib['id'])
 
     def authenticate(self):
         (token, frob) = self.flickr.get_token_part_one(perms='read')
